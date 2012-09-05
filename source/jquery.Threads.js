@@ -14,78 +14,83 @@
 
 (function() {
 
-	var Tasks = function(options) {
+	var Threads = function(options) {
 
 		this.tasks = [];
 
 		this.threads = 0;
 
-		this.threadLimit = options.threadLimit;
+		this.threadLimit = options.threadLimit || 1;
+
+		this.threadDelay = options.threadDelay || 0;
 	}
 
-	Tasks.prototype.add = function(task) {
+	$.extend(Threads.prototype, {
 
-		if (!$.isFunction(task)) return;
+		add: function(task) {
 
-		this.tasks.push({'normal': task});
+			if (!$.isFunction(task)) return;
 
-		// Run task
-		var instance = this;
+			this.tasks.push({'normal': task});
 
-		setTimeout(function(){ instance.run.apply(instance); }, 0);
-	};
+			// Run task
+			var instance = this;
 
-	Tasks.prototype.addDeferred = function(task) {
-		if(!$.isFunction(task)) return;
+			setTimeout(function(){ instance.run.apply(instance); }, 0);
+		},
 
-		this.tasks.push({'deferred': task});
-		this.run();
-	};
+		addDeferred: function(task) {
+			if(!$.isFunction(task)) return;
 
-	Tasks.prototype.run = function() {
+			this.tasks.push({'deferred': task});
+			this.run();
+		},
 
-		if (this.tasks.length > 0) {
+		run: function() {
 
-			if (this.threads < this.threadLimit) {
+			if (this.tasks.length > 0) {
 
-				this.threads++;
+				if (this.threads < this.threadLimit) {
 
-				var task = this.tasks.shift();
+					this.threads++;
 
-				// Execute task
-				if(task.deferred) {
-					var func = task.deferred;
-					var thread = $.Deferred();
+					var task = this.tasks.shift();
 
-					func.apply(thread);
+					// Execute task
+					if(task.deferred) {
+						var func = task.deferred;
+						var thread = $.Deferred();
 
-					// When thread is complete
-					thread.always(function(){
+						func.apply(thread);
+
+						// When thread is complete
+						thread.always(function(){
+
+							// Reduce thread count
+							this.threads--;
+
+							// And see if there's anymore task to run
+							this.run();
+						});
+					} else {
+						var func = task.normal;
+						try { func(); } catch(e) { console.error(e); }
 
 						// Reduce thread count
 						this.threads--;
 
 						// And see if there's anymore task to run
-						this.run();
-					});
-				} else {
-					var func = task.normal;
-					try { func(); } catch(e) {}
+						var instance = this;
 
-					// Reduce thread count
-					this.threads--;
-
-					// And see if there's anymore task to run
-					var instance = this;
-
-					setTimeout(function(){ instance.run.apply(instance); }, 0);
+						setTimeout(function(){ instance.run.apply(instance); }, this.threadDelay);
+					}
 				}
 			}
 		}
-	};
+	});
 
-	$.Tasks = function(options) {
-		return new Tasks(options);
+	$.Threads = function(options) {
+		return new Threads(options);
 	};
 
 })();
