@@ -16,9 +16,9 @@
 
 	var Threads = function(options) {
 
-		this.tasks = [];
+		this.threads = [];
 
-		this.threads = 0;
+		this.threadCount = 0;
 
 		this.threadLimit = options.threadLimit || 1;
 
@@ -27,69 +27,63 @@
 
 	$.extend(Threads.prototype, {
 
-		add: function(task) {
+		add: function(thread, type) {
 
-			if (!$.isFunction(task)) return;
+			if (!$.isFunction(thread)) return;
 
-			this.tasks.push({'normal': task});
+			thread.type = type || "normal";
 
-			// Run task
-			var instance = this;
+			if (type=="deferred") {
+				thread.deferred = $.Deferred().always($.proxy(this.next, this));
+			}
 
-			setTimeout(function(){ instance.run.apply(instance); }, 0);
+			this.threads.push(thread);
+
+			this.run();
 		},
 
-		addDeferred: function(task) {
-			if(!$.isFunction(task)) return;
+		addDeferred: function(thread) {
 
-			this.tasks.push({'deferred': task});
+			return this.add(thread, "deferred");
+		},
+
+		next: function() {
+
+			// Reduce thread count
+			this.threadCount--;
+
+			// And see if there's anymore task to run
 			this.run();
 		},
 
 		run: function() {
 
-			if (this.tasks.length > 0) {
+			var self = this;
 
-				if (this.threads < this.threadLimit) {
+			setTimeout(function(){
 
-					this.threads++;
+				if (self.threads.length < 1) return;
 
-					var task = this.tasks.shift();
+				if (self.threadCount < self.threadLimit) {
 
-					// Execute task
-					if(task.deferred) {
-						var func = task.deferred;
-						var thread = $.Deferred();
+					self.threadCount++;
 
-						func.apply(thread);
+					var thread = self.threads.shift();
 
-						// When thread is complete
-						thread.always(function(){
+					// Wrap in a try catch in case if the thread
+					// throws an error it doesn't break our chain.
+					try { thread.call(thread, thread.deferred); }
+					catch(e) { console.error(e); }
 
-							// Reduce thread count
-							this.threads--;
-
-							// And see if there's anymore task to run
-							this.run();
-						});
-					} else {
-						var func = task.normal;
-						try { func(); } catch(e) { console.error(e); }
-
-						// Reduce thread count
-						this.threads--;
-
-						// And see if there's anymore task to run
-						var instance = this;
-
-						setTimeout(function(){ instance.run.apply(instance); }, this.threadDelay);
-					}
+					!thread.deferred && self.next();
 				}
-			}
+
+			}, self.threadDelay);
 		}
 	});
 
 	$.Threads = function(options) {
+
 		return new Threads(options);
 	};
 
